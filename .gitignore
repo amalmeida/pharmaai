@@ -38,4 +38,5 @@ response.txt
 *.log
 .env
 env.local
+.env.local
 
