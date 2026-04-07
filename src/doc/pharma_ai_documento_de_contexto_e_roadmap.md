@@ -50,7 +50,7 @@ WhatsApp → Meta → ngrok → Webhook → [async] →
 
 ---
 
-## ✅ O que já foi implementado (Fase 1 + 2 + 3)
+## ✅ O que já foi implementado (Fase 1 + 2 + 3 + 4 + 5)
 
 ### ✔ Integração LLM
 - [x] Adapter OpenAI (GPT-4o-mini)
@@ -150,14 +150,21 @@ O sistema SEMPRE deve:
 
 ---
 
-## Fase 5: Token Permanente do WhatsApp
+## Fase 5: Token Permanente do WhatsApp ✅
 
 > Token temporário expira em ~24h. Para produção, precisamos de um token permanente.
 
+### ✔ Implementado no código
+- [x] **Spring Boot Actuator** — health check em `/actuator/health` (necessário para Cloud Run)
+- [x] **StartupValidator** — valida tokens na startup e loga avisos claros
+- [x] **Tokens via variáveis de ambiente** — `OPENAI_API_KEY`, `WHATSAPP_TOKEN` já são env vars
+- [x] **env.example atualizado** — com instruções para token permanente (System User)
+- [x] **.gitignore protegendo** `.env`, `env.local`, `.env.local`
+
+### 📋 Passos manuais (Meta Business Manager)
 - [ ] **Criar System User no Meta Business Manager**
-  1. Acessar [business.facebook.com](https://business.facebook.com/)
-  2. Configurações → Usuários → Usuários do sistema → Adicionar
-  3. Criar usuário do sistema com papel "Admin"
+  1. Acessar [business.facebook.com/settings/system-users](https://business.facebook.com/settings/system-users)
+  2. Clicar em "Adicionar" → criar usuário do sistema com papel "Admin"
 - [ ] **Gerar token permanente (System User Token)**
   1. No System User criado → Gerar token
   2. Selecionar o app PharmaAI
@@ -166,9 +173,10 @@ O sistema SEMPRE deve:
 - [ ] **Vincular WhatsApp Business Account ao System User**
   1. Configurações → Contas → Contas do WhatsApp
   2. Adicionar pessoas → selecionar System User → acesso total
-- [ ] **Atualizar application.properties** com token permanente
-- [ ] **Mover tokens para variáveis de ambiente** (segurança)
-  - `OPENAI_API_KEY`, `WHATSAPP_TOKEN` via env vars ou secret manager
+- [ ] **Atualizar variável de ambiente** com token permanente
+  ```powershell
+  $env:WHATSAPP_TOKEN = "TOKEN_PERMANENTE_AQUI"
+  ```
 - [ ] **Registrar número de telefone real** (sair do sandbox)
   1. Meta → WhatsApp → Começar → Adicionar número de telefone
   2. Verificar com SMS/ligação
@@ -315,9 +323,9 @@ O HTTPS **não é para os usuários** — é uma **exigência do Meta**. O webho
 | **Fase 1** | Integração LLM + PromptBuilder | ✅ Concluído |
 | **Fase 2** | RAG com DailyMed + Cache | ✅ Concluído |
 | **Fase 3** | WhatsApp (webhook + envio de resposta) | ✅ Concluído |
-| **Fase 4** | Banco de dados (PostgreSQL) | 🔜 Próximo |
-| **Fase 5** | Token permanente do WhatsApp | 🔜 Próximo |
-| **Fase 6** | Deploy Google Cloud (Cloud Run) + onboarding | 📋 Planejado |
+| **Fase 4** | Banco de dados (PostgreSQL) | ✅ Concluído |
+| **Fase 5** | Token permanente + Actuator + StartupValidator | ✅ Concluído (código) |
+| **Fase 6** | Deploy Google Cloud (Cloud Run) + onboarding | 🔜 Próximo |
 | **Fase 7** | Vector DB, OCR, painel admin | 📋 Futuro |
 
 ---
