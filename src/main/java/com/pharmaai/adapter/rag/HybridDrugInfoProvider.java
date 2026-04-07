@@ -1,5 +1,8 @@
 package com.pharmaai.adapter.rag;
 
+import com.pharmaai.adapter.out.persistence.DrugEntity;
+import com.pharmaai.adapter.out.persistence.DrugEntityMapper;
+import com.pharmaai.adapter.out.persistence.DrugJpaRepository;
 import com.pharmaai.application.rag.DrugInfoProvider;
 import com.pharmaai.domain.model.DrugInfo;
 import org.slf4j.Logger;
@@ -12,18 +15,17 @@ public class HybridDrugInfoProvider implements DrugInfoProvider {
 
     private static final Logger log = LoggerFactory.getLogger(HybridDrugInfoProvider.class);
 
-    private final DrugCacheRepository cacheRepository;
+    private final DrugJpaRepository drugRepository;
+    private final DrugEntityMapper entityMapper;
     private final DailyMedClient client;
     private final DailyMedMapper mapper;
 
-    public HybridDrugInfoProvider() {
-        this(new DrugCacheRepository(), new DailyMedClient(), new DailyMedMapper());
-    }
-
-    public HybridDrugInfoProvider(DrugCacheRepository cacheRepository,
+    public HybridDrugInfoProvider(DrugJpaRepository drugRepository,
+                                   DrugEntityMapper entityMapper,
                                    DailyMedClient client,
                                    DailyMedMapper mapper) {
-        this.cacheRepository = cacheRepository;
+        this.drugRepository = drugRepository;
+        this.entityMapper = entityMapper;
         this.client = client;
         this.mapper = mapper;
     }
@@ -31,21 +33,17 @@ public class HybridDrugInfoProvider implements DrugInfoProvider {
     @Override
     public Optional<DrugInfo> findByName(String name) {
 
-        String normalized = name.toLowerCase();
+        String normalized = name.toLowerCase().trim();
 
-        // 🔍 1. Busca no cache local
-        List<DrugInfo> cache = cacheRepository.load();
+        // 🔍 1. Busca no banco de dados
+        Optional<DrugEntity> dbResult = drugRepository.findByNameIgnoreCase(normalized);
 
-        Optional<DrugInfo> cached = cache.stream()
-                .filter(d -> normalized.contains(d.getName().toLowerCase()))
-                .findFirst();
-
-        if (cached.isPresent()) {
-            log.info("✅ Cache HIT: {}", name);
-            return cached;
+        if (dbResult.isPresent()) {
+            log.info("✅ DB HIT: {}", name);
+            return Optional.of(entityMapper.toDomain(dbResult.get()));
         }
 
-        log.info("🌐 Cache MISS - buscando no DailyMed: {}", name);
+        log.info("🌐 DB MISS - buscando no DailyMed: {}", name);
 
         try {
             // 🌐 2. Buscar setIds no DailyMed (até 5 resultados)
@@ -78,11 +76,14 @@ public class HybridDrugInfoProvider implements DrugInfoProvider {
                 // ✅ Encontrou SPL com conteúdo!
                 log.info("✅ SPL com conteúdo encontrado na tentativa {}", i + 1);
 
-                // 💾 4. Salvar no cache local
-                cache.add(drug);
-                cacheRepository.save(cache);
-
-                log.info("💾 Salvo no cache: {}", name);
+                // 💾 4. Salvar no banco de dados
+                try {
+                    DrugEntity entity = entityMapper.toEntity(drug);
+                    drugRepository.save(entity);
+                    log.info("💾 Salvo no banco: {}", name);
+                } catch (Exception e) {
+                    log.warn("⚠️ Erro ao salvar no banco (continuando): {}", e.getMessage());
+                }
 
                 return Optional.of(drug);
             }

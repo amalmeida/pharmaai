@@ -1,1 +1,23 @@
-services: {}
+# PostgreSQL para PharmaAI
+# Se ja tem Postgres rodando na porta 5432, crie o banco manualmente:
+#   docker exec postgres psql -U MCloud -d mcloud -c "CREATE DATABASE pharmaai;"
+#   docker exec postgres psql -U MCloud -d mcloud -c "CREATE USER pharmaai WITH PASSWORD 'pharmaai123'; GRANT ALL PRIVILEGES ON DATABASE pharmaai TO pharmaai; ALTER DATABASE pharmaai OWNER TO pharmaai;"
+#
+# Se NAO tem Postgres, suba com: docker compose up -d
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: pharmaai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pharmaai
+      POSTGRES_USER: pharmaai
+      POSTGRES_PASSWORD: pharmaai123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pharmaai-data:/var/lib/postgresql/data
+
+volumes:
+  pharmaai-data:

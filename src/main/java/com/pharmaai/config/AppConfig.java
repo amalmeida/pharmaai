@@ -1,8 +1,9 @@
 package com.pharmaai.config;
 
+import com.pharmaai.adapter.out.persistence.DrugEntityMapper;
+import com.pharmaai.adapter.out.persistence.DrugJpaRepository;
 import com.pharmaai.adapter.rag.DailyMedClient;
 import com.pharmaai.adapter.rag.DailyMedMapper;
-import com.pharmaai.adapter.rag.DrugCacheRepository;
 import com.pharmaai.adapter.rag.HybridDrugInfoProvider;
 import com.pharmaai.application.parser.LLMResponseParser;
 import com.pharmaai.application.prompt.PromptBuilderV2;
@@ -20,11 +21,6 @@ import java.util.List;
 public class AppConfig {
 
     @Bean
-    public DrugCacheRepository drugCacheRepository() {
-        return new DrugCacheRepository();
-    }
-
-    @Bean
     public DailyMedClient dailyMedClient() {
         return new DailyMedClient();
     }
@@ -35,23 +31,22 @@ public class AppConfig {
     }
 
     @Bean
-    public DrugInfoProvider drugInfoProvider(DrugCacheRepository cacheRepository,
+    public DrugInfoProvider drugInfoProvider(DrugJpaRepository drugRepository,
+                                             DrugEntityMapper entityMapper,
                                              DailyMedClient client,
                                              DailyMedMapper mapper) {
-        return new HybridDrugInfoProvider(cacheRepository, client, mapper);
+        return new HybridDrugInfoProvider(drugRepository, entityMapper, client, mapper);
     }
 
     @Bean
     public DrugKnowledgeService drugKnowledgeService(DrugInfoProvider provider,
-                                                      DrugCacheRepository cacheRepository,
+                                                      DrugJpaRepository drugRepository,
                                                       LLMPort llmPort) {
-        List<String> knownDrugs = cacheRepository.load()
-                .stream()
-                .map(d -> d.getName())
-                .toList();
+        // Carrega nomes conhecidos do banco (dinâmico)
+        List<String> knownDrugs = drugRepository.findAllNames();
 
         if (knownDrugs.isEmpty()) {
-            knownDrugs = List.of("paracetamol", "dipirona", "ibuprofeno");
+            knownDrugs = List.of("paracetamol", "dipirona", "ibuprofeno", "acetaminophen");
         }
 
         return new DrugKnowledgeService(provider, knownDrugs, llmPort);

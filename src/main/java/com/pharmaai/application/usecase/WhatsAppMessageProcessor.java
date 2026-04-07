@@ -5,6 +5,7 @@ import com.pharmaai.application.prompt.PromptBuilderV2;
 import com.pharmaai.application.rag.DrugKnowledgeService;
 import com.pharmaai.domain.model.LLMResponse;
 import com.pharmaai.domain.port.out.LLMPort;
+import com.pharmaai.domain.port.out.QueryLogPort;
 import com.pharmaai.domain.port.out.WhatsAppPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,17 +22,20 @@ public class WhatsAppMessageProcessor {
     private final LLMPort llmPort;
     private final LLMResponseParser parser;
     private final WhatsAppPort whatsAppPort;
+    private final QueryLogPort queryLogPort;
 
     public WhatsAppMessageProcessor(DrugKnowledgeService knowledgeService,
                                      PromptBuilderV2 promptBuilder,
                                      LLMPort llmPort,
                                      LLMResponseParser parser,
-                                     WhatsAppPort whatsAppPort) {
+                                     WhatsAppPort whatsAppPort,
+                                     QueryLogPort queryLogPort) {
         this.knowledgeService = knowledgeService;
         this.promptBuilder = promptBuilder;
         this.llmPort = llmPort;
         this.parser = parser;
         this.whatsAppPort = whatsAppPort;
+        this.queryLogPort = queryLogPort;
     }
 
     @Async
@@ -67,6 +71,13 @@ public class WhatsAppMessageProcessor {
             log.info("📤 Enviando resposta para {}...", from);
             whatsAppPort.sendMessage(from, reply);
             log.info("✅ Resposta enviada para {}", from);
+
+            // 7. Salvar log de auditoria no banco
+            try {
+                queryLogPort.log(from, userInput, null, context, raw, response.getRisk_level());
+            } catch (Exception e2) {
+                log.warn("⚠️ Erro ao salvar audit log: {}", e2.getMessage());
+            }
 
         } catch (Exception e) {
             log.error("❌ Erro ao processar mensagem de {}: {}", from, e.getMessage(), e);

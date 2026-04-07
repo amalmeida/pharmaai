@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: pharmaai
+
+  # PostgreSQL (default - producao/docker)
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/pharmaai}
+    username: ${DATABASE_USER:pharmaai}
+    password: ${DATABASE_PASSWORD:pharmaai123}
+
+  # JPA / Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+
+# OpenAI
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    url: https://api.openai.com/v1/chat/completions
+    model: gpt-4o-mini
+
+# WhatsApp Business API (Meta Cloud API)
+whatsapp:
+  api:
+    token: ${WHATSAPP_TOKEN}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:979436765263547}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:pharmaai-verify-2024}
+    url: https://graph.facebook.com/v22.0
+
+# Logging
+logging:
+  file:
+    name: target/pharmaai.log
+  level:
+    com.pharmaai: DEBUG
+

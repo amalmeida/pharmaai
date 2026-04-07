@@ -2,7 +2,7 @@
 
 Assistente farmacêutico inteligente via WhatsApp, com validação de prescrições usando **IA Generativa (LLM)** e **RAG** (Retrieval-Augmented Generation) com dados confiáveis do DailyMed/FDA (ANVISA dos EUA).
 
-> **Stack:** Java 21 · Spring Boot 3.3 · Arquitetura Hexagonal · GPT-4o-mini · WhatsApp Cloud API · DailyMed API
+> **Stack:** Java 21 · Spring Boot 3.3 · PostgreSQL 16 · Arquitetura Hexagonal · GPT-4o-mini · WhatsApp Cloud API · DailyMed API
 
 ---
 
@@ -67,6 +67,10 @@ O usuário envia uma pergunta pelo WhatsApp (ex: *"Posso tomar 5g de paracetamol
                                               │
                                               ▼
                                    [Meta Cloud API] ──▶ [Usuário WhatsApp] ✅
+                                              │
+                                              ▼
+                                   8. QueryLogAdapter
+                                      (salva auditoria no PostgreSQL)
 ```
 
 ### Integrações
@@ -76,6 +80,7 @@ O usuário envia uma pergunta pelo WhatsApp (ex: *"Posso tomar 5g de paracetamol
 | **OpenAI GPT-4o-mini** | LLM para respostas e normalização de nomes | `api.openai.com/v1/chat/completions` |
 | **DailyMed (NIH/FDA)** | Fonte confiável de dados de medicamentos (RAG) | `dailymed.nlm.nih.gov/dailymed/services/v2` |
 | **WhatsApp Cloud API** | Receber e enviar mensagens via WhatsApp | `graph.facebook.com/v22.0` |
+| **PostgreSQL 16** | Persistência de medicamentos + auditoria de consultas | `localhost:5432/pharmaai` |
 | **ngrok** | Túnel público para expor localhost ao Meta | `localhost:4040` (painel) |
 
 ### Exemplo de resposta no WhatsApp
@@ -112,11 +117,12 @@ src/main/java/com/pharmaai/
 │   │   └── LLMResponse.java        #    Resposta estruturada da LLM
 │   └── port/out/
 │       ├── LLMPort.java            #    Contrato: chamar LLM
-│       └── WhatsAppPort.java       #    Contrato: enviar mensagem WhatsApp
+│       ├── WhatsAppPort.java       #    Contrato: enviar mensagem WhatsApp
+│       └── QueryLogPort.java       #    Contrato: salvar log de auditoria
 │
 ├── application/                    # 🟢 Casos de uso — orquestração
 │   ├── usecase/
-│   │   └── WhatsAppMessageProcessor.java   # Processamento async da mensagem
+│   │   └── WhatsAppMessageProcessor.java   # Processamento async + audit log
 │   ├── rag/
 │   │   ├── DrugKnowledgeService.java       # Orquestra busca de contexto
 │   │   ├── DrugNameExtractor.java          # Match rápido por nome conhecido
@@ -135,14 +141,21 @@ src/main/java/com/pharmaai/
 │   │   └── OpenAILLMAdapter.java           # Implementa LLMPort → OpenAI API
 │   ├── out/whatsapp/
 │   │   └── WhatsAppAdapter.java            # Implementa WhatsAppPort → Meta API
+│   ├── out/persistence/                    # 🗄️ Banco de dados (JPA)
+│   │   ├── DrugEntity.java                 # Entidade JPA: medicamentos
+│   │   ├── QueryLogEntity.java             # Entidade JPA: auditoria de consultas
+│   │   ├── DrugJpaRepository.java          # Repository Spring Data
+│   │   ├── QueryLogJpaRepository.java      # Repository Spring Data
+│   │   ├── DrugEntityMapper.java           # Mapper: DrugEntity ↔ DrugInfo
+│   │   └── QueryLogAdapter.java            # Implementa QueryLogPort → banco
 │   └── rag/
 │       ├── DailyMedClient.java             # Busca dados no DailyMed (XML SPL)
 │       ├── DailyMedMapper.java             # Extrai seções do XML HL7 SPL
-│       ├── DrugCacheRepository.java        # Cache local (drugs-cache.json)
-│       └── HybridDrugInfoProvider.java     # Cache + DailyMed fallback
+│       └── HybridDrugInfoProvider.java     # DB → DailyMed fallback → auto-save
 │
 └── config/                         # ⚙️ Configuração Spring
     ├── AppConfig.java              #    Beans, @EnableAsync
+    ├── DataMigrationRunner.java    #    Migra drugs-cache.json → banco na startup
     ├── OpenAIConfig.java           #    Props da OpenAI
     └── WhatsAppConfig.java         #    Props do WhatsApp
 ```
@@ -155,6 +168,7 @@ src/main/java/com/pharmaai/
 |------------|--------|------|
 | **Java JDK** | 21+ | [Adoptium](https://adoptium.net/) |
 | **Maven** | 3.9+ (incluso via `mvnw`) | — |
+| **Docker Desktop** | qualquer | [docker.com](https://www.docker.com/products/docker-desktop/) |
 | **ngrok** | qualquer | [ngrok.com](https://ngrok.com/download) |
 | **Conta Meta for Developers** | — | [developers.facebook.com](https://developers.facebook.com/) |
 | **Chave OpenAI** | — | [platform.openai.com](https://platform.openai.com/api-keys) |
@@ -163,51 +177,105 @@ src/main/java/com/pharmaai/
 
 ## 🚀 Setup rápido (passo a passo)
 
-### 1️⃣ Clonar e compilar
+### 1️⃣ Clonar o projeto
 ```bash
-git clone <repo-url>
+git clone https://github.com/amalmeida/pharmaai.git
 cd pharmaai
-./mvnw compile
 ```
 
-### 2️⃣ Configurar tokens (ver seção [Configuração](#%EF%B8%8F-configuração))
-
-### 3️⃣ Iniciar a aplicação
+### 2️⃣ Subir o PostgreSQL (Docker)
 ```bash
+docker compose up -d
+```
+> Isso cria o banco `pharmaai` com user `pharmaai` / senha `pharmaai123` na porta **5432**.
+>
+> Se já tem um Postgres rodando na 5432 (outro projeto), crie o banco manualmente:
+> ```bash
+> docker exec <nome_container_postgres> psql -U <usuario> -d <banco_existente> -c "CREATE DATABASE pharmaai;"
+> docker exec <nome_container_postgres> psql -U <usuario> -d <banco_existente> -c "CREATE USER pharmaai WITH PASSWORD 'pharmaai123'; GRANT ALL PRIVILEGES ON DATABASE pharmaai TO pharmaai; ALTER DATABASE pharmaai OWNER TO pharmaai;"
+> ```
+
+### 3️⃣ Configurar tokens (ver seção [Configuração](#%EF%B8%8F-configuração))
+
+### 4️⃣ Compilar o projeto
+
+**Windows (PowerShell):**
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+.\mvnw.cmd clean compile
+```
+
+**Linux/Mac:**
+```bash
+./mvnw clean compile
+```
+
+### 5️⃣ Iniciar a aplicação
+
+**Windows (PowerShell):**
+```powershell
+$env:OPENAI_API_KEY = "sk-proj-SUA_CHAVE"
+$env:WHATSAPP_TOKEN = "SEU_TOKEN_META"
+.\mvnw.cmd spring-boot:run
+```
+
+**Linux/Mac:**
+```bash
+export OPENAI_API_KEY=sk-proj-SUA_CHAVE
+export WHATSAPP_TOKEN=SEU_TOKEN_META
 ./mvnw spring-boot:run
 ```
 
-### 4️⃣ Iniciar o ngrok (em outro terminal)
+> Na primeira execução, o sistema migra automaticamente os dados de `drugs-cache.json` para o PostgreSQL.
+
+### 6️⃣ Iniciar o ngrok (em outro terminal)
 ```bash
 ngrok http 8080
 ```
 
-### 5️⃣ Configurar webhook no Meta com a URL do ngrok
+### 7️⃣ Configurar webhook no Meta com a URL do ngrok
 
-### 6️⃣ Enviar mensagem pelo WhatsApp para o número de teste
+### 8️⃣ Enviar mensagem pelo WhatsApp para o número de teste
 
 ---
 
 ## ⚙️ Configuração
 
-Arquivo: `src/main/resources/application.properties`
+Arquivo: `src/main/resources/application.yml`
 
-```properties
-# OpenAI
-openai.api.key=${OPENAI_API_KEY:<SUA_CHAVE_OPENAI>}
-openai.api.url=https://api.openai.com/v1/chat/completions
-openai.api.model=gpt-4o-mini
+```yaml
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/pharmaai}
+    username: ${DATABASE_USER:pharmaai}
+    password: ${DATABASE_PASSWORD:pharmaai123}
+  jpa:
+    hibernate:
+      ddl-auto: update     # Cria/atualiza tabelas automaticamente
 
-# WhatsApp Business API (Meta Cloud API)
-whatsapp.api.token=${WHATSAPP_TOKEN:<SEU_TOKEN_META>}
-whatsapp.api.phone-number-id=${WHATSAPP_PHONE_NUMBER_ID:979436765263547}
-whatsapp.api.verify-token=${WHATSAPP_VERIFY_TOKEN:pharmaai-verify-2024}
-whatsapp.api.url=https://graph.facebook.com/v22.0
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+
+whatsapp:
+  api:
+    token: ${WHATSAPP_TOKEN}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:979436765263547}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:pharmaai-verify-2024}
 ```
 
 > ⚠️ **Tokens temporários do Meta expiram em ~24h.** Veja [como renovar](#-renovando-o-token-do-whatsapp).
 
-Você pode usar variáveis de ambiente em vez de hardcode:
+Recomendado: usar variáveis de ambiente em vez de hardcode:
+
+**Windows (PowerShell):**
+```powershell
+$env:OPENAI_API_KEY = "sk-proj-..."
+$env:WHATSAPP_TOKEN = "EAAw..."
+```
+
+**Linux/Mac:**
 ```bash
 export OPENAI_API_KEY=sk-proj-...
 export WHATSAPP_TOKEN=EAAw...
@@ -219,13 +287,36 @@ export WHATSAPP_TOKEN=EAAw...
 
 ### Windows (PowerShell)
 ```powershell
+# 0. Garantir JAVA_HOME
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-cd C:\workspace\pharmaai
+
+# 1. Subir banco (se não estiver rodando)
+docker compose up -d
+
+# 2. Configurar tokens
+$env:OPENAI_API_KEY = "sk-proj-SUA_CHAVE"
+$env:WHATSAPP_TOKEN = "SEU_TOKEN_META"
+
+# 3. Compilar
+.\mvnw.cmd clean compile
+
+# 4. Iniciar a aplicação
 .\mvnw.cmd spring-boot:run
 ```
 
 ### Linux/Mac
 ```bash
+# 1. Subir banco
+docker compose up -d
+
+# 2. Configurar tokens
+export OPENAI_API_KEY=sk-proj-SUA_CHAVE
+export WHATSAPP_TOKEN=SEU_TOKEN_META
+
+# 3. Compilar
+./mvnw clean compile
+
+# 4. Iniciar a aplicação
 ./mvnw spring-boot:run
 ```
 
@@ -234,6 +325,18 @@ A aplicação sobe na porta **8080**. Verifique:
 http://localhost:8080/webhook?hub.mode=subscribe&hub.verify_token=pharmaai-verify-2024&hub.challenge=ok
 ```
 Deve retornar: `ok`
+
+### Verificar o banco
+```bash
+# Ver tabelas criadas
+docker exec postgres psql -U pharmaai -d pharmaai -c "\dt"
+
+# Ver medicamentos no banco
+docker exec postgres psql -U pharmaai -d pharmaai -c "SELECT id, name, created_at FROM drugs;"
+
+# Ver logs de auditoria
+docker exec postgres psql -U pharmaai -d pharmaai -c "SELECT id, user_question, drug_found, risk_level, created_at FROM query_logs ORDER BY created_at DESC LIMIT 10;"
+```
 
 ---
 
@@ -290,11 +393,11 @@ Os tokens temporários do Meta **expiram em ~24h**. Para renovar:
 3. Menu lateral: **WhatsApp** → **API Setup**
 4. Na seção **Temporary access token**, clique em **Generate new token**
 5. Copie o token gerado
-6. Atualize em `application.properties`:
-   ```properties
-   whatsapp.api.token=${WHATSAPP_TOKEN:<NOVO_TOKEN>}
+6. Atualize a variável de ambiente e reinicie:
+   ```powershell
+   $env:WHATSAPP_TOKEN = "NOVO_TOKEN_AQUI"
+   .\mvnw.cmd spring-boot:run
    ```
-7. Reinicie a aplicação
 
 ### Testar se o token funciona (PowerShell)
 ```powershell
@@ -358,18 +461,33 @@ Get-Content target/pharmaai.log -Wait -Tail 20
 | 🔄 | Processando mensagem |
 | ⚡ | Match rápido no cache local |
 | 🧠 | LLM consultada para normalizar nome |
-| 🌐 | Cache MISS → buscando no DailyMed |
+| 🌐 | DB MISS → buscando no DailyMed |
 | ✅ | Sucesso |
+| 💾 | Salvo no banco de dados |
 | 📚 | Contexto RAG obtido |
 | 🤖 | LLM respondeu |
 | 📱 | Número BR normalizado |
 | 📤 | Enviando mensagem ao WhatsApp |
+| 📊 | Query log salvo (auditoria) |
 | ❌ | Erro (ver detalhes ao lado) |
 | ⏭️ | Item ignorado (duplicata, tipo não-texto, etc.) |
 
 ---
 
 ## ❗ Problemas comuns
+
+### "Port 8080 already in use"
+→ Outra instância da app está rodando. Matar o processo:
+```powershell
+# Windows
+Get-NetTCPConnection -LocalPort 8080 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+
+# Linux/Mac
+lsof -ti:8080 | xargs kill -9
+```
+
+### "Port 5432 already in use" (docker compose up)
+→ Já tem um PostgreSQL rodando. Use o existente e crie o banco manualmente (ver [Setup rápido](#-setup-rápido-passo-a-passo)).
 
 ### "Nenhum log aparece após enviar mensagem no WhatsApp"
 → O ngrok não está rodando ou a URL no Meta está desatualizada.
@@ -384,19 +502,11 @@ curl http://localhost:4040/api/tunnels
 → Token expirado. [Renovar token](#-renovando-o-token-do-whatsapp).
 
 ### "Recipient phone number not in allowed list (131030)"
-→ No modo sandbox do Meta, só é possível enviar para números cadastrados.  
+→ No modo sandbox do Meta, só é possível enviar para números cadastrados.
 Vá em **WhatsApp → API Setup → To** e adicione o número de destino.
 
-### "Port 8080 already in use"
-→ Outra instância da app está rodando.
-```powershell
-# Encontrar e matar o processo:
-netstat -ano | findstr ":8080"
-taskkill /PID <PID> /F
-```
-
 ### Número BR com formato errado
-→ O WhatsApp webhook envia o número sem o dígito 9 do celular (`555198745556`).  
+→ O WhatsApp webhook envia o número sem o dígito 9 do celular (`555198745556`).
 O `WhatsAppAdapter` corrige automaticamente para `5551998745556`.
 
 ---
@@ -405,14 +515,17 @@ O `WhatsAppAdapter` corrige automaticamente para `5551998745556`.
 
 ```
 □ 1. Abrir terminal no diretório do projeto
-□ 2. Compilar:          .\mvnw.cmd compile
-□ 3. Iniciar app:       .\mvnw.cmd spring-boot:run
-□ 4. Iniciar ngrok:     ngrok http 8080  (outro terminal)
-□ 5. Copiar URL ngrok:  http://localhost:4040
-□ 6. Atualizar webhook no Meta (se URL mudou)
-□ 7. Renovar token WhatsApp (se expirou) → application.properties
-□ 8. Testar:            enviar msg no WhatsApp
-□ 9. Verificar logs:    target/pharmaai.log
+□ 2. Garantir banco:     docker compose up -d
+□ 3. Configurar JAVA:    $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+□ 4. Configurar tokens:  $env:OPENAI_API_KEY = "..."; $env:WHATSAPP_TOKEN = "..."
+□ 5. Compilar:           .\mvnw.cmd clean compile
+□ 6. Iniciar app:        .\mvnw.cmd spring-boot:run
+□ 7. Iniciar ngrok:      ngrok http 8080  (outro terminal)
+□ 8. Copiar URL ngrok:   http://localhost:4040
+□ 9. Atualizar webhook no Meta (se URL mudou)
+□ 10. Renovar token WhatsApp (se expirou)
+□ 11. Testar:            enviar msg no WhatsApp
+□ 12. Verificar logs:    Get-Content target/pharmaai.log -Wait -Tail 20
 ```
 
 ---

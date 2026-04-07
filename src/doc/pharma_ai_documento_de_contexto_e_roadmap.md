@@ -1,259 +1,339 @@
 # 💊 PharmaAI — Documento de Contexto e Roadmap
 
+> Última atualização: Abril 2026
+
 ## 🎯 Visão Geral do Projeto
 
-O **PharmaAI** é um projeto de estudo e prototipação de uma solução baseada em **IA Generativa (LLMs)** com foco na área farmacêutica.
+O **PharmaAI** é um assistente farmacêutico inteligente via WhatsApp, usando **IA Generativa (LLM + RAG)** para validar prescrições e responder dúvidas sobre medicamentos com base em dados confiáveis.
 
-Objetivo principal:
+### Objetivos
 
 - Auxiliar farmacêuticos na validação de prescrições
-- Responder dúvidas sobre medicamentos
-- Garantir respostas seguras e com responsabilidade
-- Evoluir para um sistema confiável com uso de **RAG (Retrieval-Augmented Generation)**
+- Responder dúvidas sobre medicamentos com dados reais (DailyMed/FDA)
+- Garantir respostas seguras, estruturadas e auditáveis
+- Disponibilizar para uso real por profissionais de saúde
 
 ---
 
-# 🧠 Conceitos Fundamentais
+## 🧠 Conceitos-Chave
 
-## IA Generativa
-
-IA Generativa é um tipo de inteligência artificial capaz de **gerar conteúdo novo**, como texto, código ou imagens.
-
-No nosso caso:
-👉 Geração de respostas sobre medicamentos
-
----
-
-## LLM (Large Language Model)
-
-Modelos treinados com grandes volumes de texto que conseguem:
-
-- Entender linguagem natural
-- Gerar respostas coerentes
-- Extrair informações de texto
-
-Exemplo usado no projeto:
-- `gpt-4o-mini`
+| Conceito | Descrição |
+|----------|-----------|
+| **IA Generativa** | Geração de conteúdo (texto) por modelos de linguagem |
+| **LLM** | Large Language Model — `gpt-4o-mini` usado no projeto |
+| **RAG** | Retrieval-Augmented Generation — busca dados reais antes de gerar resposta |
+| **Alucinação** | Quando a LLM gera informação plausível mas incorreta — RAG reduz isso |
 
 ---
 
-## ⚠️ Limitação Importante
+## 🏗️ Arquitetura
 
-LLMs podem:
+**Arquitetura Hexagonal (Ports & Adapters)**
 
-- Gerar respostas incorretas (alucinação)
-- Parecer confiáveis mesmo quando estão errados
+| Camada | Responsabilidade |
+|--------|-----------------|
+| `domain/` | Modelos e contratos (ports) — SEM dependência de framework |
+| `application/` | Casos de uso, RAG service, PromptBuilder, parser |
+| `adapter/` | Integrações: OpenAI, DailyMed, WhatsApp, Cache |
+| `config/` | Configurações Spring |
 
-👉 Por isso, precisamos de validação e RAG
-
----
-
-# 🏗️ Arquitetura do Projeto
-
-## Estilo
-
-- Arquitetura Hexagonal (Ports & Adapters)
-- Separação clara de responsabilidades
-
-## Camadas
-
-### Domain
-- Regras de negócio
-- Portas (interfaces)
-
-### Application
-- Use cases
-- PromptBuilder
-
-### Adapter
-- Integração com LLM
-- Futuro: WhatsApp, OCR
-
----
-
-## 🔄 Fluxo Atual
+### Fluxo Completo
 
 ```
-Usuário → PromptBuilder → LLM → Resposta
+WhatsApp → Meta → ngrok → Webhook → [async] →
+  DrugNameExtractor → DrugNameNormalizer (LLM) →
+  DrugKnowledgeService (Cache + DailyMed XML) →
+  PromptBuilderV2 (contexto RAG) →
+  OpenAI GPT-4o-mini → LLMResponseParser →
+  WhatsAppAdapter → Meta → WhatsApp ✅
 ```
 
 ---
 
-# ✅ O que já foi implementado
+## ✅ O que já foi implementado (Fase 1 + 2 + 3)
 
-## ✔ Integração com LLM
+### ✔ Integração LLM
+- [x] Adapter OpenAI (GPT-4o-mini)
+- [x] Configuração externa (apiKey, model, url)
+- [x] PromptBuilder v2 com contexto RAG e regras de segurança
+- [x] Parser JSON → `LLMResponse` (answer, risk_level, alerts, recommendation)
 
-- Adapter para OpenAI
-- Uso de API real
-- Configuração externa (apiKey, model)
+### ✔ RAG — Retrieval-Augmented Generation
+- [x] DailyMedClient — busca medicamentos via API DailyMed (XML SPL)
+- [x] DailyMedMapper — parseia XML HL7 SPL (indicações, dosagem, warnings, contraindicações, efeitos)
+- [x] DrugCacheRepository — cache local (`drugs-cache.json`)
+- [x] HybridDrugInfoProvider — cache local → fallback DailyMed
+- [x] DrugNameExtractor — match rápido por nomes conhecidos
+- [x] DrugNameNormalizer — LLM resolve nomes comerciais BR → nome internacional (ex: "tilenol" → "acetaminophen")
+- [x] ContextFormatter — formata `DrugInfo` → texto para prompt
 
-## ✔ PromptBuilder v1
+### ✔ WhatsApp (Meta Cloud API)
+- [x] Webhook GET (verificação do Meta)
+- [x] Webhook POST (recebe mensagens)
+- [x] Processamento assíncrono (@Async)
+- [x] Deduplicação de mensagens
+- [x] WhatsAppAdapter — envia resposta formatada ao usuário
+- [x] Normalização de número BR (5551 → 55519)
+- [x] Formatação rica (emojis, negrito, listas)
 
-- Regras de segurança
-- Controle de resposta
-- Estrutura padronizada
-
-## ✔ Teste funcional
-
-Exemplo:
-
-Pergunta:
-```
-Para que serve dipirona?
-```
-
-Resposta:
-```
-Explicação correta + alerta de segurança
-```
-
----
-
-# 🧠 Próxima evolução: RAG
-
-## O que é RAG?
-
-RAG (Retrieval-Augmented Generation) combina:
-
-1. Busca de informação confiável
-2. Uso do LLM para gerar resposta baseada nessa informação
+### ✔ Infra
+- [x] ngrok para expor localhost ao Meta
+- [x] Logs estruturados com emojis (`target/pharmaai.log`)
+- [x] `.gitignore` protegendo tokens e arquivos sensíveis
+- [x] Repositório Git: https://github.com/amalmeida/pharmaai.git
 
 ---
 
-## 🔄 Fluxo com RAG
+## 📚 Fontes de Dados (RAG)
 
-```
-Pergunta
-   ↓
-Busca em base confiável
-   ↓
-Contexto
-   ↓
-LLM gera resposta baseada no contexto
-```
+| Fonte | Status | Uso |
+|-------|--------|-----|
+| **DailyMed (NIH/FDA)** | ✅ Integrado | XML SPL — bulas oficiais dos EUA |
+| **Cache local (JSON)** | ✅ Integrado | Evita chamadas repetidas à API |
+| **ANVISA** | 🔜 Futuro | Bulas oficiais do Brasil |
+| **WHO (OMS)** | 🔜 Futuro | Protocolos globais |
 
 ---
 
-## 🎯 Benefícios
+## ⚠️ Segurança e Responsabilidade
 
-- Reduz alucinação
-- Aumenta confiabilidade
-- Permite auditoria
-- Controla fonte da informação
+O sistema SEMPRE deve:
 
----
-
-# 📚 Fontes confiáveis para medicamentos
-
-## 🌎 Internacionais
-
-### DailyMed
-https://dailymed.nlm.nih.gov/dailymed/
-
-- Bulas oficiais
-- Dados estruturados
-- Excelente para integração futura
+- ❌ **Não** fornecer diagnóstico
+- ❌ **Não** prescrever medicamentos
+- ✅ Recomendar consulta profissional
+- ✅ Sinalizar riscos e alertas
+- ✅ Informar fonte dos dados
+- ✅ Incluir disclaimer em todas as respostas
 
 ---
 
-### FDA
-https://www.fda.gov/drugs
+# 🚀 Roadmap — O que falta para Produção
 
-- Aprovação de medicamentos
-- Documentação técnica
+## Fase 4: Banco de Dados (próximo passo)
 
----
+> Sair do cache JSON e ter persistência real.
 
-### WHO (OMS)
-https://www.who.int/medicines
+### 🤔 Qual banco usar? Comparativo
 
-- Protocolos globais
-- Diretrizes de uso
+| Banco | Tipo | Prós | Contras | Veredicto |
+|-------|------|------|---------|-----------|
+| **PostgreSQL** | Relacional | Robusto, Spring Data JPA nativo, suporta JSON, **pgvector** para busca semântica futura | Schema rígido (mas OK para nosso caso) | ✅ **Recomendado** |
+| **MongoDB** | Documento | Flexível para bulas (documentos grandes), schema-free | Mais complexo para relacionamentos, menos suporte Spring nativo que JPA | ⚠️ Boa opção, mas Postgres resolve |
+| **Redis** | Cache/KV | Ultra-rápido, ótimo para cache | Não é banco principal, dados em memória, perde ao reiniciar (sem persistência padrão) | ⚠️ Complementar, não substitui DB |
 
----
+### 💡 Recomendação: **PostgreSQL**
 
-## 🇧🇷 Brasil
+**Por quê:**
+1. **Spring Data JPA** funciona perfeitamente — já estamos no ecossistema Spring
+2. **pgvector** — extensão que adiciona busca vetorial (semântica) ao Postgres, eliminando necessidade de banco separado para vector search no futuro
+3. **JSON columns** — Postgres suporta `jsonb`, podemos guardar a bula crua como JSON se precisar
+4. **Redis como complemento** — no futuro, usar Redis para cache de consultas frequentes (substituindo o `drugs-cache.json`)
 
-### ANVISA
-https://consultas.anvisa.gov.br/#/bulario/
+### Tarefas
 
-- Bulas oficiais no Brasil
-- Importante para contexto local
-
----
-
-# 🧠 Estratégia de uso dessas fontes
-
-## Fase 1 (Atual)
-- LLM sem RAG
-- Prompt controlado
-
-## Fase 2 (Próxima)
-- Buscar dados dessas fontes
-- Inserir no prompt como contexto
-
-Exemplo:
-
-```
-Contexto:
-- Dose máxima: X mg
-
-Pergunta:
-...
-```
+- [ ] **Adicionar dependências** (Spring Data JPA + PostgreSQL driver)
+- [ ] **Criar entidades JPA**
+  - `DrugEntity` — dados do medicamento (nome, indicação, dosagem, warnings, etc.)
+  - `QueryLogEntity` — histórico de consultas (quem perguntou, quando, resposta)
+  - `UserEntity` — farmacêuticos cadastrados (futuro)
+- [ ] **Migrar cache JSON → banco**
+  - Script de importação `drugs-cache.json` → tabela `drugs`
+- [ ] **Criar repositórios Spring Data**
+  - `DrugRepository extends JpaRepository<DrugEntity, Long>`
+  - `QueryLogRepository` — para auditoria
+- [ ] **Atualizar HybridDrugInfoProvider**
+  - Prioridade: DB → DailyMed API → resposta sem contexto
+  - Salvar automaticamente no DB após busca no DailyMed
+- [ ] **Docker Compose** para PostgreSQL
+  - Atualizar `compose.yaml` com serviço `postgres`
 
 ---
 
-## Fase 3 (Avançado)
+## Fase 5: Token Permanente do WhatsApp
 
-- Indexação dos dados
-- Busca semântica (vector database)
-- RAG completo
+> Token temporário expira em ~24h. Para produção, precisamos de um token permanente.
+
+- [ ] **Criar System User no Meta Business Manager**
+  1. Acessar [business.facebook.com](https://business.facebook.com/)
+  2. Configurações → Usuários → Usuários do sistema → Adicionar
+  3. Criar usuário do sistema com papel "Admin"
+- [ ] **Gerar token permanente (System User Token)**
+  1. No System User criado → Gerar token
+  2. Selecionar o app PharmaAI
+  3. Permissões: `whatsapp_business_messaging`, `whatsapp_business_management`
+  4. Gerar → token **não expira**
+- [ ] **Vincular WhatsApp Business Account ao System User**
+  1. Configurações → Contas → Contas do WhatsApp
+  2. Adicionar pessoas → selecionar System User → acesso total
+- [ ] **Atualizar application.properties** com token permanente
+- [ ] **Mover tokens para variáveis de ambiente** (segurança)
+  - `OPENAI_API_KEY`, `WHATSAPP_TOKEN` via env vars ou secret manager
+- [ ] **Registrar número de telefone real** (sair do sandbox)
+  1. Meta → WhatsApp → Começar → Adicionar número de telefone
+  2. Verificar com SMS/ligação
+  3. Definir nome de exibição e foto do perfil
 
 ---
 
-# ⚠️ Segurança e responsabilidade
+## Fase 6: Deploy no Google Cloud (FREE TIER) 🌩️
 
-O sistema deve SEMPRE:
+> Sair do ngrok e ter a aplicação rodando na nuvem, com HTTPS automático e custo zero para teste.
 
-- Não fornecer diagnóstico
-- Não prescrever medicamentos
-- Recomendar consulta profissional
-- Sinalizar riscos
+### ❓ Por que HTTPS se é só WhatsApp?
+
+O HTTPS **não é para os usuários** — é uma **exigência do Meta**. O webhook que recebe mensagens do WhatsApp **precisa ser HTTPS**. Hoje usamos ngrok para isso. Com o **Google Cloud Run**, ganhamos HTTPS automático e gratuito — sem precisar comprar domínio!
+
+### 💡 Por que Google Cloud?
+
+| Recurso | Free Tier | Uso no PharmaAI |
+|---------|-----------|-----------------|
+| **Cloud Run** | 2M requests/mês, 360K GB-s memória, 180K vCPU-s | App Spring Boot (webhook + LLM) |
+| **Cloud SQL (Postgres)** | $300 créditos (90 dias) | Banco de dados |
+| **Secret Manager** | 6 secrets ativos grátis | API keys, tokens |
+| **Cloud Build** | 120 min/dia grátis | CI/CD automático |
+| **Artifact Registry** | 500MB grátis | Imagens Docker |
+
+**Vantagens:**
+- ✅ **HTTPS automático** — Cloud Run gera URL `https://pharmaai-xxxxx-uc.a.run.app`
+- ✅ **Sem domínio** — basta usar a URL do Cloud Run como webhook no Meta
+- ✅ **Sem ngrok** — elimina dependência local
+- ✅ **Escala a zero** — não cobra quando ninguém usa
+- ✅ **$300 créditos grátis** — suficiente para meses de teste
+- ✅ **Experiência real com GCP** — diferencial no currículo
+
+### Tarefas — Deploy
+
+- [ ] **Criar conta Google Cloud** (se ainda não tem)
+  1. Acessar [cloud.google.com](https://cloud.google.com/)
+  2. Ativar free trial ($300 créditos por 90 dias)
+  3. Criar projeto: `pharmaai`
+- [ ] **Instalar Google Cloud CLI (gcloud)**
+  ```
+  # Windows - baixar installer:
+  # https://cloud.google.com/sdk/docs/install
+  gcloud init
+  gcloud auth login
+  gcloud config set project pharmaai
+  ```
+- [ ] **Criar Dockerfile**
+  ```dockerfile
+  FROM eclipse-temurin:21-jre-alpine
+  COPY target/pharmaai-0.0.1-SNAPSHOT.jar app.jar
+  EXPOSE 8080
+  ENTRYPOINT ["java", "-jar", "app.jar"]
+  ```
+- [ ] **Build e push da imagem**
+  ```bash
+  # Compilar o JAR
+  ./mvnw clean package -DskipTests
+  # Build e deploy direto no Cloud Run
+  gcloud run deploy pharmaai \
+    --source . \
+    --region southamerica-east1 \
+    --allow-unauthenticated \
+    --set-env-vars "OPENAI_API_KEY=xxx,WHATSAPP_TOKEN=xxx,WHATSAPP_VERIFY_TOKEN=xxx"
+  ```
+- [ ] **Cloud SQL (PostgreSQL) — quando Fase 4 estiver pronta**
+  ```bash
+  gcloud sql instances create pharmaai-db \
+    --database-version POSTGRES_15 \
+    --tier db-f1-micro \
+    --region southamerica-east1
+  ```
+- [ ] **Secret Manager para tokens**
+  ```bash
+  echo -n "sk-xxx" | gcloud secrets create openai-api-key --data-file=-
+  echo -n "EAAx..." | gcloud secrets create whatsapp-token --data-file=-
+  ```
+- [ ] **Atualizar webhook no Meta**
+  - Trocar URL do ngrok pela URL do Cloud Run
+  - URL será algo como: `https://pharmaai-xxxxx-uc.a.run.app/webhook`
+
+### Tarefas — Monitoramento e Segurança
+
+- [ ] **Monitoramento e logs**
+  - Cloud Run já integra com **Cloud Logging** (logs automáticos)
+  - Health check endpoint (`/actuator/health`)
+  - Alertas via **Cloud Monitoring** (email gratuito)
+- [ ] **Rate limiting e segurança**
+  - Limitar requisições por usuário/minuto
+  - Validar origem dos webhooks (assinatura do Meta)
+  - Proteger endpoints administrativos
+- [ ] **Onboarding de farmacêuticos**
+  - Número WhatsApp Business dedicado com nome "PharmaAI"
+  - Mensagem de boas-vindas automática
+  - Instruções de uso (ex: "Envie sua dúvida sobre medicamentos")
+  - Disclaimer legal em toda interação
+- [ ] **Testes automatizados**
+  - Testes unitários (domain, application)
+  - Testes de integração (adapters)
+  - Teste E2E simulando webhook completo
 
 ---
 
-# 🚀 Próximos passos
+## Fase 7: Evolução Avançada (futuro)
 
-## Curto prazo
+- [ ] **Busca semântica com pgvector (no próprio PostgreSQL)**
+  - Instalar extensão `pgvector` no Postgres
+  - Gerar embeddings das bulas via OpenAI Embeddings API
+  - Buscar medicamentos por similaridade semântica (não só por nome exato)
+  - RAG avançado com ranking de relevância
+  - ⚠️ Se escalar muito → migrar para Pinecone, Weaviate ou Qdrant (vector DB dedicado)
+- [ ] **Redis para cache de consultas frequentes**
+  - Substituir `drugs-cache.json` por Redis
+  - TTL configurável por medicamento
+  - Cache de respostas LLM para perguntas repetidas
+- [ ] **Múltiplas fontes RAG**
+  - ANVISA (bulas brasileiras)
+  - WHO/OMS
+  - Bases proprietárias de farmácias
+- [ ] **OCR de receitas médicas**
+  - Usuário envia foto da receita
+  - Sistema extrai medicamentos via OCR
+  - Valida dosagens e interações
+- [ ] **Histórico de consultas por usuário**
+  - Farmacêutico vê histórico de perguntas
+  - Auditoria completa
+- [ ] **Painel web administrativo**
+  - Dashboard com métricas de uso
+  - Gerenciar medicamentos no banco
+  - Ver logs de consultas
+- [ ] **Interações medicamentosas**
+  - Detectar conflitos entre múltiplos medicamentos
+  - Alertar sobre combinações perigosas
+- [ ] **Multi-idioma**
+  - Respostas em PT-BR e EN
+  - Normalização de nomes em ambos idiomas
 
-- Melhorar PromptBuilder (v2)
-- Criar parser de prescrição
-- Estruturar resposta em JSON
+---
 
-## Médio prazo
+# 📊 Resumo do Status
 
-- Implementar RAG simples
-- Integrar com base de medicamentos
-
-## Longo prazo
-
-- Integração com WhatsApp
-- OCR de receitas
-- Histórico e auditoria
+| Fase | Descrição | Status |
+|------|-----------|--------|
+| **Fase 1** | Integração LLM + PromptBuilder | ✅ Concluído |
+| **Fase 2** | RAG com DailyMed + Cache | ✅ Concluído |
+| **Fase 3** | WhatsApp (webhook + envio de resposta) | ✅ Concluído |
+| **Fase 4** | Banco de dados (PostgreSQL) | 🔜 Próximo |
+| **Fase 5** | Token permanente do WhatsApp | 🔜 Próximo |
+| **Fase 6** | Deploy Google Cloud (Cloud Run) + onboarding | 📋 Planejado |
+| **Fase 7** | Vector DB, OCR, painel admin | 📋 Futuro |
 
 ---
 
 # 🧠 Insight Final
 
-O valor do sistema NÃO está apenas no LLM.
+O valor do PharmaAI **não está apenas no LLM**.
 
-Está em:
+Está na **orquestração completa**:
 
-- Orquestração
-- Validação
-- Fontes confiáveis
-- Segurança
+- 🔍 Busca de dados confiáveis (RAG)
+- 🧠 Normalização inteligente de nomes
+- 📋 Resposta estruturada com risco e alertas
+- 📱 Entrega via WhatsApp (canal real do farmacêutico)
+- 🔒 Segurança e disclaimers em toda interação
+- 📊 Auditoria e rastreabilidade
 
-👉 Isso transforma um chatbot em um produto real.
+👉 **Isso transforma um chatbot em um produto real para farmacêuticos.**
 
