@@ -63,6 +63,11 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Actuator (health check para Cloud Run / monitoramento) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
 
 		<!-- Test -->
 		<dependency>

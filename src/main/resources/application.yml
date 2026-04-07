@@ -37,3 +37,13 @@ logging:
   level:
     com.pharmaai: DEBUG
 
+# Actuator (health check)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
