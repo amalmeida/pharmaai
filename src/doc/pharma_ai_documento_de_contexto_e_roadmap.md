@@ -162,25 +162,10 @@ O sistema SEMPRE deve:
 - [x] **.gitignore protegendo** `.env`, `env.local`, `.env.local`
 
 ### 📋 Passos manuais (Meta Business Manager)
-- [ ] **Criar System User no Meta Business Manager**
-  1. Acessar [business.facebook.com/settings/system-users](https://business.facebook.com/settings/system-users)
-  2. Clicar em "Adicionar" → criar usuário do sistema com papel "Admin"
-- [ ] **Gerar token permanente (System User Token)**
-  1. No System User criado → Gerar token
-  2. Selecionar o app PharmaAI
-  3. Permissões: `whatsapp_business_messaging`, `whatsapp_business_management`
-  4. Gerar → token **não expira**
-- [ ] **Vincular WhatsApp Business Account ao System User**
-  1. Configurações → Contas → Contas do WhatsApp
-  2. Adicionar pessoas → selecionar System User → acesso total
-- [ ] **Atualizar variável de ambiente** com token permanente
-  ```powershell
-  $env:WHATSAPP_TOKEN = "TOKEN_PERMANENTE_AQUI"
-  ```
-- [ ] **Registrar número de telefone real** (sair do sandbox)
-  1. Meta → WhatsApp → Começar → Adicionar número de telefone
-  2. Verificar com SMS/ligação
-  3. Definir nome de exibição e foto do perfil
+- [x] **Criar System User no Meta Business Manager** — `pharma-adm` (Admin)
+- [x] **Gerar token permanente (System User Token)** — com permissões `whatsapp_business_messaging` + `whatsapp_business_management`
+- [x] **Vincular WhatsApp Business Account ao System User** — App PharmaAI + Conta Pharmaai (controle total)
+- [x] **Token permanente gerado e configurado**
 
 ---
 
@@ -324,7 +309,7 @@ O HTTPS **não é para os usuários** — é uma **exigência do Meta**. O webho
 | **Fase 2** | RAG com DailyMed + Cache | ✅ Concluído |
 | **Fase 3** | WhatsApp (webhook + envio de resposta) | ✅ Concluído |
 | **Fase 4** | Banco de dados (PostgreSQL) | ✅ Concluído |
-| **Fase 5** | Token permanente + Actuator + StartupValidator | ✅ Concluído (código) |
+| **Fase 5** | Token permanente + Actuator + StartupValidator | ✅ Concluído |
 | **Fase 6** | Deploy Google Cloud (Cloud Run) + onboarding | 🔜 Próximo |
 | **Fase 7** | Vector DB, OCR, painel admin | 📋 Futuro |
 

@@ -1,0 +1,15 @@
+target/
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.git/
+.gitignore
+*.md
+*.log
+.env
+env.local
+ngrok_recovery_codes.txt
+response.txt
+
